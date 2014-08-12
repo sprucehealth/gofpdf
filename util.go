@@ -25,7 +25,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 )
 
 func round(f float64) int {
@@ -231,13 +230,25 @@ func UnicodeTranslatorFromFile(fileStr string) (f func(string) string, err error
 // "cp1252", the gofpdf code page default.
 //
 // See tutorial 23 for an example of this function.
-func (f *Fpdf) UnicodeTranslatorFromDescriptor(cpStr string) (rep func(string) string) {
+func (f *Fpdf) UnicodeTranslatorFromDescriptor(cpStr string) func(string) string {
 	if f.err != nil {
-		return
+		return nil
 	}
 	if len(cpStr) == 0 {
 		cpStr = "cp1252"
 	}
-	rep, f.err = UnicodeTranslatorFromFile(filepath.Join(f.fontpath, cpStr) + ".map")
-	return
+
+	rd, err := f.fontLoader(cpStr + ".map")
+	if err != nil {
+		f.err = err
+		return nil
+	}
+	defer rd.Close()
+
+	rep, err := UnicodeTranslator(rd)
+	if err != nil {
+		f.err = err
+	}
+
+	return rep
 }

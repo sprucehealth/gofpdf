@@ -35,7 +35,6 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
-	"path"
 	"strings"
 	"time"
 )
@@ -48,7 +47,7 @@ func (b *fmtBuffer) printf(fmtStr string, args ...interface{}) {
 	b.Buffer.WriteString(fmt.Sprintf(fmtStr, args...))
 }
 
-func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType) (f *Fpdf) {
+func fpdfNew(orientationStr, unitStr, sizeStr string, fontLoader FontLoader, size SizeType) (f *Fpdf) {
 	f = new(Fpdf)
 	if orientationStr == "" {
 		orientationStr = "P"
@@ -58,9 +57,6 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType)
 	}
 	if sizeStr == "" {
 		sizeStr = "A4"
-	}
-	if fontDirStr == "" {
-		fontDirStr = "."
 	}
 	f.page = 0
 	f.n = 2
@@ -88,7 +84,7 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType)
 	f.SetTextColor(0, 0, 0)
 	f.colorFlag = false
 	f.ws = 0
-	f.fontpath = fontDirStr
+	f.fontLoader = fontLoader
 	// Core fonts
 	f.coreFonts = map[string]bool{
 		"courier":      true,
@@ -181,7 +177,7 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType)
 // alternative to New() that provides additional customization. This function
 // is demonstrated in tutorial 15.
 func NewCustom(init *InitType) (f *Fpdf) {
-	return fpdfNew(init.OrientationStr, init.UnitStr, init.SizeStr, init.FontDirStr, init.Size)
+	return fpdfNew(init.OrientationStr, init.UnitStr, init.SizeStr, init.FontLoader, init.Size)
 }
 
 // New returns a pointer to a new Fpdf instance. Its methods are subsequently
@@ -201,8 +197,8 @@ func NewCustom(init *InitType) (f *Fpdf) {
 //
 // fontDirStr specifies the file system location in which font resources will
 // be found. An empty string is replaced with ".".
-func New(orientationStr, unitStr, sizeStr, fontDirStr string) (f *Fpdf) {
-	return fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, SizeType{0, 0})
+func New(orientationStr, unitStr, sizeStr string, fontLoader FontLoader) (f *Fpdf) {
+	return fpdfNew(orientationStr, unitStr, sizeStr, fontLoader, SizeType{0, 0})
 }
 
 // Ok returns true if no processing errors have occurred.
@@ -303,8 +299,8 @@ func (f *Fpdf) SetCellMargin(margin float64) {
 
 // SetFontLocation sets the location in the file system of the font and font
 // definition files.
-func (f *Fpdf) SetFontLocation(fontDirStr string) {
-	f.fontpath = fontDirStr
+func (f *Fpdf) SetFontLoader(fontLoader FontLoader) {
+	f.fontLoader = fontLoader
 }
 
 // SetHeaderFunc sets the function that lets the application render the page
@@ -1256,9 +1252,8 @@ func (f *Fpdf) AddFont(familyStr, styleStr, fileStr string) {
 	if fileStr == "" {
 		fileStr = strings.Replace(familyStr, " ", "", -1) + strings.ToLower(styleStr) + ".json"
 	}
-	fileStr = path.Join(f.fontpath, fileStr)
 
-	file, err := os.Open(fileStr)
+	file, err := f.fontLoader(fileStr)
 	if err != nil {
 		f.err = err
 		return
@@ -2815,11 +2810,18 @@ func (f *Fpdf) putfonts() {
 		f.newobj()
 		info.n = f.n
 		f.fontFiles[file] = info
-		font, err := ioutil.ReadFile(path.Join(f.fontpath, file))
+
+		rd, err := f.fontLoader(file)
 		if err != nil {
 			f.err = err
 			return
 		}
+		font, err := ioutil.ReadAll(rd)
+		rd.Close()
+		if err != nil {
+			f.err = err
+		}
+
 		// dbg("font file [%s], ext [%s]", file, file[len(file)-2:])
 		compressed := file[len(file)-2:] == ".z"
 		if !compressed && info.length2 > 0 {

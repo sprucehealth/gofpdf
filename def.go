@@ -18,6 +18,9 @@ package gofpdf
 
 import (
 	"bytes"
+	"io"
+	"os"
+	"path"
 )
 
 // Version of FPDF from which this package is derived
@@ -124,7 +127,7 @@ type InitType struct {
 	UnitStr        string
 	SizeStr        string
 	Size           SizeType
-	FontDirStr     string
+	FontLoader     FontLoader
 }
 
 // Fpdf is the principal structure for creating a single PDF document
@@ -154,7 +157,7 @@ type Fpdf struct {
 	x, y             float64                   // current position in user unit
 	lasth            float64                   // height of last printed cell
 	lineWidth        float64                   // line width in user unit
-	fontpath         string                    // path containing fonts
+	fontLoader       FontLoader                // loader for fonts
 	coreFonts        map[string]bool           // array of core font names
 	fonts            map[string]fontDefType    // array of used fonts
 	fontFiles        map[string]fontFileType   // array of font files
@@ -254,4 +257,12 @@ type fontInfoType struct {
 	Widths             [256]int
 	Size1, Size2       uint32
 	Desc               fontDescType
+}
+
+type FontLoader func(name string) (io.ReadCloser, error)
+
+func FileFontLoader(pth string) FontLoader {
+	return func(name string) (io.ReadCloser, error) {
+		return os.Open(path.Join(pth, name))
+	}
 }
